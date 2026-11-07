@@ -77,6 +77,7 @@ class GatewayHttpIntegrationTest {
     private static final String CUSTOMER = "customer.posselect.com";
     private static final String PRODUCT = "product.posselect.com";
     private static final String HOME = "home.posselect.com";
+    private static final String WWW = "www.posselect.com";
     private static final String ADMIN = "admin.posselect.com";
     private static final String UPSTREAM_HEADER = "X-Test-Upstream";
 
@@ -284,7 +285,8 @@ class GatewayHttpIntegrationTest {
 
     @Test
     void 인증을_요구하지_않는_호스트에서도_위조_신원_헤더는_제거된다() {
-        client.get().uri("/").header("Host", HOME)
+        // home 의 페이지 GET 은 www 로 301 된다(gateway#369) — 같은 store-front 를 대표 호스트로 본다.
+        client.get().uri("/").header("Host", WWW)
                 .header("X-User-Id", "attacker")
                 .exchange()
                 .expectStatus().isOk()
@@ -339,5 +341,36 @@ class GatewayHttpIntegrationTest {
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$.headers['x-test-upstream']").isEqualTo("admin-front.customer.svc.cluster.local");
+    }
+
+    @Test
+    void 비대표_호스트의_페이지는_경로와_쿼리를_유지한_채_www_로_301된다() {
+        // gateway#369: 예전에는 posselect.com/faq 가 302 로 www 메인에 떨어지고, home 은 www 와 같은 HTML 을 냈다.
+        for (String host : List.of(HOME, "posselect.com")) {
+            client.get().uri("/notices/3?page=2").header("Host", host)
+                    .exchange()
+                    .expectStatus().isEqualTo(HttpStatus.MOVED_PERMANENTLY)
+                    .expectHeader().valueEquals("Location", "https://www.posselect.com/notices/3?page=2");
+        }
+
+        assertThat(ARRIVED).isEmpty();
+    }
+
+    @Test
+    void home_출처의_로그인_상태_조회는_리다이렉트되지_않고_auth_api_에_닿는다() {
+        client.get().uri("/api/auth/me").header("Host", HOME)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.headers['x-test-upstream']").isEqualTo("auth-api.customer.svc.cluster.local");
+    }
+
+    @Test
+    void 대표_호스트는_리다이렉트_없이_store_front_에_닿는다() {
+        client.get().uri("/faq").header("Host", WWW)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.headers['x-test-upstream']").isEqualTo("store-front.customer.svc.cluster.local");
     }
 }

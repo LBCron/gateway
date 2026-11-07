@@ -69,8 +69,10 @@ spring:
                -  id: shop-root-redirect
                   predicates:
                   - Host=posselect.com
+                  # 대표 호스트는 www.posselect.com(gateway#369). 경로·쿼리를 유지하는 301 — 내장 RedirectTo 는
+                  # 경로를 버려 posselect.com/faq 가 메인으로 떨어졌다.
                   filters:
-                  - RedirectTo=302, https://www.posselect.com
+                  - CanonicalHostRedirect=301, www.posselect.com
                   uri: no://op
                -  id: shop-customer-redirect
                   predicates:
@@ -82,7 +84,8 @@ spring:
                   predicates:
                   - Host=home.leedohyun.com
                   filters:
-                  - RedirectTo=302, https://home.posselect.com
+                  # home.posselect.com 은 www 로 301 되므로 한 번에 www 로 보낸다(gateway#369).
+                  - RedirectTo=302, https://www.posselect.com
                   uri: no://op
                -  id: shop-product-redirect
                   predicates:
@@ -275,6 +278,17 @@ spring:
                   - Method=POST,PUT,PATCH,DELETE
                   filters:
                   - SetStatus=403
+                  uri: no://op
+               # 대표 호스트는 www.posselect.com(gateway#369). home 과 www 가 같은 HTML 을 내서 검색엔진이 한 문서를
+               # 두 주소로 나눠 보던 것을 home → www 301 로 합친다. 페이지(GET/HEAD)만 보낸다 — 위의 /api/auth/**·
+               # /api/wishlists/** 라우트가 먼저 잡으므로 home 출처에서 열린 화면의 API 호출은 그대로 동작한다.
+               # 이 라우트는 반드시 위 API 라우트들보다 아래, store-front 보다 위(HomeCanonicalRedirectRouteTest).
+               -  id: store-front-home-canonical
+                  predicates:
+                  - Host=home.posselect.com
+                  - Method=GET,HEAD
+                  filters:
+                  - CanonicalHostRedirect=301, www.posselect.com
                   uri: no://op
                -  id: store-front
                   predicates:
